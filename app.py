@@ -4,9 +4,9 @@ import requests
 import random  # Import the random module
 from flask import Flask, request, Response
 
-SLACK_BOT_TOKEN = "VELJIQVuEHIKlXXlsf0tHbwD"
-SLACK_SIGNING_SECRET = "a2b9987b83b72df999c4307d078af125"
-SLACK_WEBHOOK_URL = "https://hooks.slack.com/services/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"
+SLACK_BOT_TOKEN = " make these into environment variables" # 👈 Get this from Slack apps home
+SLACK_SIGNING_SECRET = " make these into environmetn variables "  # 👈 Get this from Slack apps home
+SLACK_WEBHOOK_URL = " make these into environement variables " # 👈 Get this from Slack apps home
 
 app = Flask(__name__)
 
