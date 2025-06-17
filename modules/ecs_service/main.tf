@@ -29,7 +29,7 @@ resource "aws_ecs_task_definition" "task" {
 
   container_definitions = jsonencode([
     {
-      name      = "slack-bot-container",
+      name      = "slackbot",
       image     = var.container_image,
       portMappings = [{
         containerPort = var.container_port,
@@ -45,7 +45,7 @@ resource "aws_ecs_task_definition" "task" {
       },
       environment = [{
         name  = "SLACK_BOT_TOKEN",
-        value = "your-slack-bot-token"
+        value = "9homMwSn32sDTcchC4uQR65K"
       }]
     }
   ])
@@ -61,12 +61,12 @@ resource "aws_ecs_service" "main" {
   network_configuration {
     subnets         = var.subnet_ids
     security_groups = [aws_security_group.ecs_service.id]
-    assign_public_ip = false
+    assign_public_ip = true
   }
 
   load_balancer {
     target_group_arn = var.alb_target_group_arn
-    container_name   = "slack-bot-container"
+    container_name   = "slackbot"
     container_port   = var.container_port
   }
 

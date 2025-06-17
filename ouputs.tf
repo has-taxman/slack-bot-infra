@@ -33,3 +33,7 @@ output "alb_security_group_id" {
 output "service_url" {
   value = "http://${module.alb.alb_dns_name}" # 👈 We can add this if you output DNS from the ALB module
 }
+
+output "alb_dns_name" {
+  value = module.alb.dns_name
+}

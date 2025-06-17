@@ -11,5 +11,5 @@ variable "container_port" {
   default = 3000
 }
 variable "aws_region" {
-  default = "us-east-1"
+  default = "eu-west-2"
 }

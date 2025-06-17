@@ -1,4 +1,16 @@
+.venv/
 venv/
 .env/
 *.pyc
 __pycache__/
+
+# Local .terraform directories
+**/.terraform/*
+
+# .tfstate files
+*.tfstate
+*.tfstate.backup
+*.tfstate.*
+
+.terraform.lock.hcl
+

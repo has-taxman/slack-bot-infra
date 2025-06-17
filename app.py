@@ -1,110 +1,99 @@
+from dotenv import load_dotenv
 import os
 import json
 import requests
-import random  # Import the random module
+import random
+import hmac
+import hashlib
 from flask import Flask, request, Response
 
-SLACK_BOT_TOKEN = " make these into environment variables" # 👈 Get this from Slack apps home
-SLACK_SIGNING_SECRET = " make these into environmetn variables "  # 👈 Get this from Slack apps home
-SLACK_WEBHOOK_URL = " make these into environement variables " # 👈 Get this from Slack apps home
+# Load environment variables
+load_dotenv()
+
+SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN")
+SLACK_SIGNING_SECRET = os.getenv("SLACK_SIGNING_SECRET")
+SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
 
 app = Flask(__name__)
 
-# A list of jokes for the bot to tell
-jokes = [
-    "Why don't scientists trust atoms? Because they make up everything!",
-    "What do you call a lazy kangaroo? Pouch potato!",
-    "Why did the bicycle fall over? Because it was two tired!",
-    "Knock, knock. Who's there? Lettuce. Lettuce who? Lettuce in! It's cold out here!",
-    "What musical instrument is found in the bathroom? A tuba toothpaste."
-]
-
-
-
-def respond_to_message(event):
-    if "text" in event:
-        user = event.get("user")
-        text = event.get("text")
-        channel = event.get("channel")
-
-        if "hello" in text.lower() or "hi" in text.lower():
-            response_text = f"Hello <@{user}>! How can I help you today?"
-            send_slack_message(channel, response_text)
-        elif "help" in text.lower():
-            response_text = "I can say hello or tell you a joke! Just mention me or send me a direct message saying 'hello', 'hi', or 'tell me a joke'."
-            send_slack_message(channel, response_text)
-        elif "tell me a joke" in text.lower():
-            joke = random.choice(jokes)  # Pick a random joke from the list
-            response_text = joke
-            send_slack_message(channel, response_text)
-
-def send_slack_message(channel, text):
-    webhook_url = SLACK_WEBHOOK_URL  # Use the global variable # Alternatively, use the Bot Token for more control
-    payload = {
-        "channel": channel,
-        "text": text
-    }
-    headers = {
-        'Content-Type': 'application/json'
-    }
-    response = requests.post(webhook_url, data=json.dumps(payload), headers=headers)
-    if response.status_code != 200:
-        print(f"Error sending message: {response.status_code} - {response.text}")
-
-def verify_slack_signature(request_data, timestamp, signature):
-    """
-    Verifies the signature of the incoming Slack request.
-    """
-    signing_secret = SLACK_SIGNING_SECRET
-    basestring = f"v0:{timestamp}:{request_data.decode('utf-8')}"
-    my_signature = hmac.new(signing_secret.encode('utf-8'), basestring.encode('utf-8'), hashlib.sha256).hexdigest()
-    return hmac.compare_digest(f"v0={my_signature}", signature)
-
-@app.route("/slack/events", methods=["POST"])
-def slack_events():
-    print("Received a POST request to /slack/events")
-
-    if not SLACK_SIGNING_SECRET:
-        print("SLACK_SIGNING_SECRET not configured.")
-        return Response("Slack Signing Secret not configured", status=500)
-
-    request_data = request.get_data()
-    timestamp = request.headers.get("X-Slack-Request-Timestamp")
-    signature = request.headers.get("X-Slack-Signature")
-
-    print(f"Timestamp: {timestamp}")
-    print(f"Signature: {signature}")
-    print(f"Request Data: {request_data.decode('utf-8')}")
-
-    if not verify_slack_signature(request_data, timestamp, signature):
-        print("Invalid Slack signature.")
-        return Response("Invalid Slack signature", status=403)
-    else:
-        print("Slack signature verified successfully.")
-
-    data = request.get_json()
-    print(f"Parsed JSON data: {data}")
-
-    if data and "type" in data and data["type"] == "url_verification":
-        print("Handling url_verification request.")
-        challenge_value = data.get("challenge")
-        print(f"Challenge value: {challenge_value}")
-        return Response(challenge_value, mimetype="text/plain", status=200)
-    elif data and "type" in data and data["type"] == "event_callback":
-        print("Handling event_callback request.")
-        event = data["event"]
-        if event.get("type") == "message" and not event.get("subtype"):
-            respond_to_message(event)
-    else:
-        print("Received an unexpected type of request.")
-
-    return Response(status=200)
+# Health check endpoint for ALB
 @app.route("/health", methods=["GET"])
 def health_check():
     return "OK", 200
 
-if __name__ == "__main__":
-    import hmac
-    import hashlib
-    app.run(debug=True, host='0.0.0.0', port=8080)
+# Main Slack events endpoint
+@app.route("/slack/events", methods=["POST"])
+def slack_events():
+    data = request.get_json()
+    app.logger.debug(f"Received Slack payload: {data}")
 
+    # 1) Handle URL verification challenge first (no signature required)
+    if data and data.get("type") == "url_verification":
+        challenge = data.get("challenge")
+        return Response(challenge, mimetype="text/plain", status=200)
+
+    # 2) Extract Slack signature headers
+    timestamp = request.headers.get("X-Slack-Request-Timestamp")
+    signature = request.headers.get("X-Slack-Signature")
+
+    # 3) Verify request signature
+    if not verify_slack_signature(request.get_data(), timestamp, signature):
+        app.logger.warning("Invalid Slack signature.")
+        return Response("Invalid signature", status=403)
+
+    # 4) Handle event callbacks
+    if data.get("type") == "event_callback":
+        event = data.get("event", {})
+        if event.get("type") == "message" and not event.get("subtype"):
+            respond_to_message(event)
+
+    return Response(status=200)
+
+
+def verify_slack_signature(request_data, timestamp, signature):
+    """
+    Verify incoming Slack request using signing secret
+    """
+    if not timestamp or not signature:
+        return False
+    basestring = f"v0:{timestamp}:{request_data.decode('utf-8')}"
+    computed = hmac.new(
+        SLACK_SIGNING_SECRET.encode('utf-8'),
+        basestring.encode('utf-8'),
+        hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(f"v0={computed}", signature)
+
+
+def send_slack_message(channel, text):
+    payload = {"channel": channel, "text": text}
+    headers = {'Content-Type': 'application/json'}
+    resp = requests.post(SLACK_WEBHOOK_URL, json=payload, headers=headers)
+    if resp.status_code != 200:
+        app.logger.error(f"Slack message failed: {resp.status_code} {resp.text}")
+
+
+def respond_to_message(event):
+    text = event.get("text", "").lower()
+    user = event.get("user")
+    channel = event.get("channel")
+
+    if "hello" in text or "hi" in text:
+        send_slack_message(channel, f"Hello <@{user}>! How can I help you today?")
+    elif "help" in text:
+        send_slack_message(channel, (
+            "I can say hello or tell you a joke! Just say 'hello', 'hi', or 'tell me a joke'."
+        ))
+    elif "tell me a joke" in text:
+        joke = random.choice([
+            "Why don't scientists trust atoms? Because they make up everything!",
+            "What do you call a lazy kangaroo? Pouch potato!",
+            "Why did the bicycle fall over? Because it was two tired!",
+            "Knock, knock. Lettuce. Lettuce who? Lettuce in! It's cold out here!",
+            "What musical instrument is found in the bathroom? A tuba toothpaste."
+        ])
+        send_slack_message(channel, joke)
+
+
+if __name__ == "__main__":
+    app.run(debug=True, host='0.0.0.0', port=8080)
