@@ -44,17 +44,17 @@ If you want to deploy this project yourself, follow these simple steps:
    git clone https://github.com/your-username/slack-bot-infra.git
    cd slack-bot-infra
     ```
-2. **Create image and push to ECR**
+2. **Create image and push to ECR**:
    Make sure you create an ECR named slackbot and use the push commands and create the Docker image.
    Before doing this ensure you have filled the secrets in a .env saved in the root folder from the SLACK API.
    
-4. **Configure your AWS credentials**:
+3. **Configure your AWS credentials**:
    Make sure your AWS CLI is configured with the right credentials:
 
    ```bash
    aws configure
    ```
-5. **Initialize Terraform:**:
+4. **Initialize Terraform:**:
 
   Initialize the project to download the necessary provider plugins:
 
